@@ -4,7 +4,7 @@ let state = {
     pages: [],
     blocks: [],
     copiedBlockLink: null,
-    lastBlockType: 'text' // Track the last block type used
+    lastBlockType: 'text'
 };
 
 // DOM elements
@@ -15,12 +15,12 @@ const elements = {
     addPageBtn: document.getElementById('add-page-btn')
 };
 
-// Block types with icons and descriptions
+// Block types with enhanced descriptions
 const blockTypes = {
-    text: { label: 'Text', description: 'Just start writing with plain text.' },
-    h1: { label: 'Heading 1', description: 'Big section heading.' },
-    h2: { label: 'Heading 2', description: 'Medium section heading.' },
-    todo: { label: 'To-do', description: 'Track tasks with a checkbox.' }
+    text: { label: 'Text', description: 'Plain text paragraph', icon: '✎' },
+    h1: { label: 'Heading 1', description: 'Large section heading', icon: 'H1' },
+    h2: { label: 'Heading 2', description: 'Medium section heading', icon: 'H2' },
+    todo: { label: 'To-do', description: 'Checkable task item', icon: '✓' }
 };
 
 // Initialize the app
@@ -30,73 +30,27 @@ function init() {
     handleRouting();
 }
 
-// Load pages from localStorage
+// Data persistence functions
 function loadPages() {
-    const pages = JSON.parse(localStorage.getItem('pages')) || [];
-    state.pages = pages;
+    state.pages = JSON.parse(localStorage.getItem('pages')) || [];
     renderPagesList();
-    
-    // If no pages exist, create a default one
-    if (pages.length === 0) {
-        createPage('Welcome');
-    }
+    if (state.pages.length === 0) createPage('Welcome');
 }
 
-// Save pages to localStorage
 function savePages() {
     localStorage.setItem('pages', JSON.stringify(state.pages));
 }
 
-// Save blocks for current page to localStorage
 function saveBlocks() {
     if (state.currentPage) {
         localStorage.setItem(`page-${state.currentPage}`, JSON.stringify(state.blocks));
     }
 }
 
-// Setup event listeners
-function setupEventListeners() {
-    // Add page button
-    elements.addPageBtn.addEventListener('click', () => {
-        const pageName = elements.newPageInput.value.trim();
-        if (pageName) {
-            createPage(pageName);
-            elements.newPageInput.value = '';
-        }
-    });
-
-    // Add page on Enter key
-    elements.newPageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            const pageName = elements.newPageInput.value.trim();
-            if (pageName) {
-                createPage(pageName);
-                elements.newPageInput.value = '';
-            }
-        }
-    });
-
-    // Handle hash changes for routing
-    window.addEventListener('hashchange', handleRouting);
-}
-
-// Handle routing based on URL hash
-function handleRouting() {
-    const hash = window.location.hash;
-    if (hash.startsWith('#page=')) {
-        const pageName = decodeURIComponent(hash.substring(6));
-        loadPage(pageName);
-    } else if (state.pages.length > 0) {
-        // Default to first page if no hash
-        loadPage(state.pages[0].name);
-    }
-}
-
-// Create a new page
+// Page management
 function createPage(name) {
-    // Check if page already exists
     if (state.pages.some(page => page.name === name)) {
-        alert('A page with this name already exists');
+        alert('Page name already exists');
         return;
     }
 
@@ -105,85 +59,111 @@ function createPage(name) {
     savePages();
     renderPagesList();
     loadPage(name);
-    
-    // Update URL
     window.location.hash = `#page=${encodeURIComponent(name)}`;
 }
 
-// Delete a page
 function deletePage(name) {
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    if (!confirm(`Delete "${name}"?`)) return;
     
     state.pages = state.pages.filter(page => page.name !== name);
     savePages();
     renderPagesList();
     
-    // If we deleted the current page, load the first available page
     if (state.currentPage === name) {
-        if (state.pages.length > 0) {
-            loadPage(state.pages[0].name);
-        } else {
-            state.currentPage = null;
-            state.blocks = [];
-            renderBlocks();
-        }
+        state.currentPage = state.pages[0]?.name || null;
+        state.blocks = state.currentPage ? 
+            JSON.parse(localStorage.getItem(`page-${state.currentPage}`)) || [] : [];
+        renderBlocks();
     }
-    
-    // Remove page data from localStorage
     localStorage.removeItem(`page-${name}`);
 }
 
-// Load a page
 function loadPage(name) {
     if (!state.pages.some(page => page.name === name)) return;
     
     state.currentPage = name;
     state.blocks = JSON.parse(localStorage.getItem(`page-${name}`)) || [];
     
-    // If no blocks exist, create a default one
     if (state.blocks.length === 0) {
-        state.blocks = [createBlock('text', 'Type / to see commands...')];
+        state.blocks = [createBlock('text', 'Type / for commands')];
         saveBlocks();
     }
     
     renderPagesList();
     renderBlocks();
-    
-    // Update URL
     window.location.hash = `#page=${encodeURIComponent(name)}`;
 }
 
-// Render pages list
+// UI rendering
 function renderPagesList() {
-    elements.pagesList.innerHTML = '';
-    
-    state.pages.forEach(page => {
-        const pageItem = document.createElement('div');
-        pageItem.className = `page-item ${page.name === state.currentPage ? 'active' : ''}`;
-        pageItem.textContent = page.name;
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-page-btn';
-        deleteBtn.innerHTML = '×';
-        deleteBtn.addEventListener('click', (e) => {
+    elements.pagesList.innerHTML = state.pages.map(page => {
+        return `
+            <div class="page-item ${page.name === state.currentPage ? 'active' : ''}">
+                ${page.name}
+                <button class="delete-page-btn" data-page="${page.name}">×</button>
+            </div>
+        `;
+    }).join('');
+
+    document.querySelectorAll('.delete-page-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            deletePage(page.name);
+            deletePage(e.target.dataset.page);
         });
-        
-        pageItem.appendChild(deleteBtn);
-        pageItem.addEventListener('click', () => loadPage(page.name));
-        
-        elements.pagesList.appendChild(pageItem);
+    });
+
+    document.querySelectorAll('.page-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('delete-page-btn')) {
+                loadPage(item.textContent.trim());
+            }
+        });
     });
 }
 
-// Create a new block
+function renderBlocks() {
+    elements.blocksContainer.innerHTML = state.blocks.map((block, index) => {
+        const placeholder = {
+            text: 'Type / for commands',
+            h1: 'Heading 1',
+            h2: 'Heading 2',
+            todo: 'To-do item'
+        }[block.type];
+
+        return `
+            <div class="block ${block.type} ${block.indent ? `indent-${block.indent}` : ''}" 
+                 id="block-${block.id}" draggable="true">
+                <div class="block-controls">
+                    <span class="block-type-selector">⋯</span>
+                    <span class="copy-block-link-btn" title="Copy block link">🔗</span>
+                    <span class="delete-block-btn">×</span>
+                </div>
+                ${block.type === 'todo' ? `
+                    <input type="checkbox" class="todo-checkbox" 
+                           ${block.content.startsWith('~') ? 'checked' : ''}>
+                    <div class="block-content todo-text" id="${block.id}" 
+                         contenteditable="true" data-placeholder="${placeholder}"
+                         data-block-index="${index}">
+                        ${processContent(block.content.replace(/^~/, ''))}
+                    </div>
+                ` : `
+                    <div class="block-content" id="${block.id}" 
+                         contenteditable="true" data-placeholder="${placeholder}"
+                         data-block-index="${index}">
+                        ${processContent(block.content)}
+                    </div>
+                `}
+            </div>
+        `;
+    }).join('');
+
+    setupDragAndDrop();
+    setupBlockEventListeners();
+}
+
+// Block management
 function createBlock(type, content = '', indent = 0) {
-    // Update last block type
-    if (type !== state.lastBlockType) {
-        state.lastBlockType = type;
-    }
-    
+    state.lastBlockType = type;
     return {
         id: Date.now().toString(),
         type,
@@ -193,167 +173,283 @@ function createBlock(type, content = '', indent = 0) {
     };
 }
 
-// Add a block
 function addBlock(type, content = '', indent = 0, position = null) {
     const newBlock = createBlock(type, content, indent);
-    
-    if (position === null) {
-        state.blocks.push(newBlock);
-    } else {
-        state.blocks.splice(position, 0, newBlock);
-    }
-    
+    position === null ? state.blocks.push(newBlock) : state.blocks.splice(position, 0, newBlock);
     saveBlocks();
     renderBlocks();
-    
-    // Focus the new block
-    setTimeout(() => {
-        const newBlockElement = document.getElementById(newBlock.id);
-        if (newBlockElement) {
-            newBlockElement.focus();
-        }
-    }, 0);
-    
+    setTimeout(() => document.getElementById(newBlock.id)?.focus(), 0);
     return newBlock;
 }
 
-// Update a block
 function updateBlock(id, updates) {
-    const blockIndex = state.blocks.findIndex(block => block.id === id);
-    if (blockIndex !== -1) {
-        state.blocks[blockIndex] = { ...state.blocks[blockIndex], ...updates };
+    const index = state.blocks.findIndex(b => b.id === id);
+    if (index !== -1) {
+        state.blocks[index] = { ...state.blocks[index], ...updates };
         saveBlocks();
     }
 }
 
-// Delete a block
 function deleteBlock(id) {
-    const blockIndex = state.blocks.findIndex(block => block.id === id);
-    if (blockIndex !== -1) {
-        state.blocks.splice(blockIndex, 1);
+    const index = state.blocks.findIndex(b => b.id === id);
+    if (index !== -1) {
+        state.blocks.splice(index, 1);
         saveBlocks();
         renderBlocks();
-        
-        // Focus the previous block if exists
         if (state.blocks.length > 0) {
-            const prevIndex = Math.max(0, blockIndex - 1);
-            const prevBlockId = state.blocks[prevIndex].id;
             setTimeout(() => {
-                const prevBlockElement = document.getElementById(prevBlockId);
-                if (prevBlockElement) {
-                    prevBlockElement.focus();
-                }
+                const prevId = state.blocks[Math.max(0, index - 1)].id;
+                document.getElementById(prevId)?.focus();
             }, 0);
         }
     }
 }
 
-// Render all blocks
-function renderBlocks() {
-    elements.blocksContainer.innerHTML = '';
-    
-    state.blocks.forEach((block, index) => {
-        const blockElement = document.createElement('div');
-        blockElement.className = `block ${block.type} ${block.indent ? `indent-${block.indent}` : ''}`;
-        blockElement.id = `block-${block.id}`; // Add ID for block element
-        
-        // Create block controls
-        const blockControls = document.createElement('div');
-        blockControls.className = 'block-controls';
-        
-        const typeSelector = document.createElement('span');
-        typeSelector.className = 'block-type-selector';
-        typeSelector.textContent = '⋯';
-        typeSelector.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showBlockTypeMenu(block.id, e.target);
-        });
-        
-        const copyLinkBtn = document.createElement('span');
-        copyLinkBtn.className = 'copy-block-link-btn';
-        copyLinkBtn.textContent = '🔗';
-        copyLinkBtn.title = 'Copy block link';
-        copyLinkBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            copyBlockLink(block.id);
-        });
-        
-        const deleteBtn = document.createElement('span');
-        deleteBtn.className = 'delete-block-btn';
-        deleteBtn.textContent = '×';
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteBlock(block.id);
-        });
-        
-        blockControls.appendChild(typeSelector);
-        blockControls.appendChild(copyLinkBtn);
-        blockControls.appendChild(deleteBtn);
-        blockElement.appendChild(blockControls);
-        
-        // Create block content based on type
-        if (block.type === 'todo') {
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'todo-checkbox';
-            checkbox.checked = block.content.startsWith('~') ? true : false;
-            checkbox.addEventListener('change', () => {
-                const newContent = checkbox.checked ? `~${block.content.replace(/^~/, '')}` : block.content.replace(/^~/, '');
-                updateBlock(block.id, { content: newContent });
-            });
-            
-            const contentElement = document.createElement('div');
-            contentElement.className = 'block-content todo-text';
-            contentElement.id = block.id;
-            contentElement.contentEditable = true;
-            contentElement.dataset.placeholder = 'To-do...';
-            contentElement.innerHTML = processContent(block.content.replace(/^~/, ''));
-            
-            blockElement.appendChild(checkbox);
-            blockElement.appendChild(contentElement);
-        } else {
-            const contentElement = document.createElement('div');
-            contentElement.className = 'block-content';
-            contentElement.id = block.id;
-            contentElement.contentEditable = true;
-            
-            if (block.type === 'text') {
-                contentElement.dataset.placeholder = 'Type / for commands...';
-            } else if (block.type === 'h1') {
-                contentElement.dataset.placeholder = 'Heading 1';
-            } else if (block.type === 'h2') {
-                contentElement.dataset.placeholder = 'Heading 2';
-            }
-            
-            contentElement.innerHTML = processContent(block.content);
-            blockElement.appendChild(contentElement);
+// Event handling
+function setupEventListeners() {
+    elements.addPageBtn.addEventListener('click', () => {
+        const name = elements.newPageInput.value.trim();
+        if (name) {
+            createPage(name);
+            elements.newPageInput.value = '';
         }
-        
-        // Set up event listeners for the block
-        setupBlockEventListeners(blockElement, block, index);
-        
-        elements.blocksContainer.appendChild(blockElement);
     });
-    
-    // Make all blocks draggable
-    setupDragAndDrop();
+
+    elements.newPageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && elements.newPageInput.value.trim()) {
+            createPage(elements.newPageInput.value.trim());
+            elements.newPageInput.value = '';
+        }
+    });
+
+    window.addEventListener('hashchange', handleRouting);
 }
 
-// Copy block link to clipboard
-function copyBlockLink(blockId) {
-    if (!state.currentPage) return;
+function handleRouting() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#page=')) {
+        loadPage(decodeURIComponent(hash.substring(6)));
+    } else if (state.pages.length > 0) {
+        loadPage(state.pages[0].name);
+    }
+}
+
+function setupBlockEventListeners() {
+    document.querySelectorAll('.block').forEach(blockElement => {
+        const blockId = blockElement.id.replace('block-', '');
+        const block = state.blocks.find(b => b.id === blockId);
+        const contentElement = blockElement.querySelector('.block-content');
+        const index = parseInt(contentElement.dataset.blockIndex);
+
+        // Block controls
+        blockElement.querySelector('.block-type-selector').addEventListener('click', (e) => {
+            e.stopPropagation();
+            showBlockTypeMenu(blockId, e.target);
+        });
+
+        blockElement.querySelector('.copy-block-link-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyBlockLink(blockId);
+        });
+
+        blockElement.querySelector('.delete-block-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteBlock(blockId);
+        });
+
+        // Todo checkbox
+        if (block.type === 'todo') {
+            const checkbox = blockElement.querySelector('.todo-checkbox');
+            checkbox.addEventListener('change', () => {
+                const newContent = checkbox.checked ? 
+                    `~${block.content.replace(/^~/, '')}` : 
+                    block.content.replace(/^~/, '');
+                updateBlock(blockId, { content: newContent });
+            });
+        }
+
+        // Content editing
+        contentElement.addEventListener('input', () => {
+            updateBlock(blockId, { content: contentElement.innerHTML });
+        });
+
+        contentElement.addEventListener('keydown', handleBlockKeydown(block, index));
+        contentElement.addEventListener('paste', handlePaste);
+    });
+}
+
+function handleBlockKeydown(block, index) {
+    return (e) => {
+        const contentElement = e.target;
+        
+        // Enter key
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const selection = window.getSelection();
+            const range = selection.getRangeAt(0);
+            const caretOffset = range.startOffset;
+            const currentContent = contentElement.innerHTML;
+            
+            if (caretOffset > 0 && caretOffset < currentContent.length) {
+                const beforeText = currentContent.substring(0, caretOffset);
+                const afterText = currentContent.substring(caretOffset);
+                updateBlock(block.id, { content: beforeText });
+                addBlock(block.type, afterText, block.indent, index + 1);
+            } else {
+                const nextType = block.type === 'todo' ? 'todo' : state.lastBlockType;
+                addBlock(nextType, '', block.indent, index + 1);
+            }
+        }
+        
+        // Tab key
+        else if (e.key === 'Tab') {
+            e.preventDefault();
+            const newIndent = e.shiftKey ? 
+                Math.max(0, block.indent - 1) : 
+                Math.min(4, block.indent + 1);
+            updateBlock(block.id, { indent: newIndent });
+            renderBlocks();
+            setTimeout(() => contentElement.focus(), 0);
+        }
+        
+        // Slash command
+        else if (e.key === '/' && contentElement.textContent === '/') {
+            e.preventDefault();
+            showBlockTypeMenu(block.id, contentElement);
+        }
+        
+        // Backspace
+        else if (e.key === 'Backspace' && contentElement.textContent === '') {
+            e.preventDefault();
+            deleteBlock(block.id);
+        }
+        
+        // Arrow keys
+        else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateToBlock(index - 1);
+        }
+        else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            navigateToBlock(index + 1);
+        }
+    };
+}
+
+function handlePaste(e) {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     
+    if (text.includes('#page=') && text.includes('&block=')) {
+        const url = new URL(text);
+        const pageName = decodeURIComponent(url.hash.split('&')[0].replace('#page=', ''));
+        document.execCommand('insertHTML', false, 
+            `<a href="${text}" class="internal-link">${pageName} (block)</a>`);
+    } else {
+        document.execCommand('insertHTML', false, text);
+    }
+}
+
+// UI components
+function showBlockTypeMenu(blockId, targetElement) {
     const block = state.blocks.find(b => b.id === blockId);
     if (!block) return;
     
-    const url = `${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.currentPage)}&block=${blockId}`;
-    navigator.clipboard.writeText(url).then(() => {
-        state.copiedBlockLink = { page: state.currentPage, blockId };
-        showToast('Block link copied to clipboard');
+    const menu = document.createElement('div');
+    menu.className = 'block-type-menu';
+    Object.assign(menu.style, {
+        position: 'absolute',
+        backgroundColor: 'white',
+        border: '1px solid #e0e0e0',
+        borderRadius: '4px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        zIndex: '1000',
+        padding: '4px 0',
+        minWidth: '220px'
     });
+
+    // Search input
+    const searchInput = document.createElement('input');
+    Object.assign(searchInput, {
+        type: 'text',
+        placeholder: 'Search block types...'
+    });
+    Object.assign(searchInput.style, {
+        width: 'calc(100% - 24px)',
+        margin: '6px 12px',
+        padding: '6px',
+        border: '1px solid #e0e0e0',
+        borderRadius: '4px'
+    });
+    
+    searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        menu.querySelectorAll('.block-type-menu-item').forEach(item => {
+            item.style.display = item.dataset.label.toLowerCase().includes(term) ? 'flex' : 'none';
+        });
+    });
+    
+    menu.appendChild(searchInput);
+
+    // Menu items
+    Object.entries(blockTypes).forEach(([type, { label, description, icon }]) => {
+        const item = document.createElement('div');
+        item.className = 'block-type-menu-item';
+        item.dataset.label = label;
+        Object.assign(item.style, {
+            padding: '8px 12px',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: block.type === type ? '#f1f1f1' : 'white'
+        });
+
+        item.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px">
+                <span style="font-size: 14px">${icon}</span>
+                <div>
+                    <div style="font-weight: 500; font-size: 13px">${label}</div>
+                    <div style="font-size: 11px; color: #666; margin-top: 2px">${description}</div>
+                </div>
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            updateBlock(blockId, { type });
+            renderBlocks();
+            document.body.removeChild(menu);
+            setTimeout(() => document.getElementById(blockId)?.focus(), 0);
+        });
+
+        item.addEventListener('mouseenter', () => {
+            item.style.backgroundColor = '#f7f7f7';
+        });
+
+        item.addEventListener('mouseleave', () => {
+            item.style.backgroundColor = block.type === type ? '#f1f1f1' : 'white';
+        });
+
+        menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+
+    // Position menu
+    const rect = targetElement.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+
+    // Focus search and handle outside clicks
+    setTimeout(() => searchInput.focus(), 0);
+    const clickHandler = (e) => {
+        if (!menu.contains(e.target)) {
+            document.body.removeChild(menu);
+            document.removeEventListener('click', clickHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', clickHandler), 0);
 }
 
-// Show toast notification
 function showToast(message) {
     const toast = document.createElement('div');
     toast.className = 'toast';
@@ -362,23 +458,29 @@ function showToast(message) {
     
     setTimeout(() => {
         toast.classList.add('fade-out');
-        setTimeout(() => {
-            document.body.removeChild(toast);
-        }, 300);
+        setTimeout(() => document.body.removeChild(toast), 300);
     }, 2000);
 }
 
-// Process content for internal links and block links
+// Utilities
+function copyBlockLink(blockId) {
+    if (!state.currentPage) return;
+    
+    const url = `${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.currentPage)}&block=${blockId}`;
+    navigator.clipboard.writeText(url).then(() => {
+        state.copiedBlockLink = { page: state.currentPage, blockId };
+        showToast('Block link copied');
+    });
+}
+
 function processContent(content) {
-    // Convert [[Page Name]] to internal links
     let processed = content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
         return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
     });
     
-    // Convert block links (if any were pasted)
     if (state.copiedBlockLink) {
-        const blockLinkRegex = new RegExp(`(${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.copiedBlockLink.page)}&block=${state.copiedBlockLink.blockId})`, 'g');
-        processed = processed.replace(blockLinkRegex, (match) => {
+        const regex = new RegExp(`(${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.copiedBlockLink.page)}&block=${state.copiedBlockLink.blockId})`, 'g');
+        processed = processed.replace(regex, (match) => {
             return `<a href="${match}" class="internal-link">${state.copiedBlockLink.page} (block)</a>`;
         });
     }
@@ -386,131 +488,16 @@ function processContent(content) {
     return processed;
 }
 
-// Set up event listeners for a block
-function setupBlockEventListeners(blockElement, block, index) {
-    const contentElement = block.type === 'todo' 
-        ? blockElement.querySelector('.todo-text') 
-        : blockElement.querySelector('.block-content');
-    
-    // Handle content changes
-    contentElement.addEventListener('input', () => {
-        let newContent = contentElement.innerHTML;
-        
-        // For todo items, preserve the ~ prefix if checkbox is checked
-        if (block.type === 'todo') {
-            const checkbox = blockElement.querySelector('.todo-checkbox');
-            if (checkbox.checked && !newContent.startsWith('~')) {
-                newContent = `~${newContent}`;
-            } else if (!checkbox.checked && newContent.startsWith('~')) {
-                newContent = newContent.substring(1);
-            }
-        }
-        
-        updateBlock(block.id, { content: newContent });
-    });
-    
-    // Handle Enter key to create new block
-    contentElement.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            
-            // Get current caret position
-            const selection = window.getSelection();
-            const range = selection.getRangeAt(0);
-            const caretOffset = range.startOffset;
-            const currentContent = contentElement.innerHTML;
-            
-            // Split content at caret position if in the middle of text
-            if (caretOffset > 0 && caretOffset < currentContent.length) {
-                const beforeText = currentContent.substring(0, caretOffset);
-                const afterText = currentContent.substring(caretOffset);
-                
-                // Update current block
-                updateBlock(block.id, { content: beforeText });
-                
-                // Add new block with remaining text
-                addBlock(block.type, afterText, block.indent, index + 1);
-            } else {
-                // If current block is todo, next block should be todo too
-                const nextBlockType = block.type === 'todo' ? 'todo' : state.lastBlockType;
-                addBlock(nextBlockType, '', block.indent, index + 1);
-            }
-        }
-        
-        // Handle Tab and Shift+Tab for indentation
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            const newIndent = e.shiftKey 
-                ? Math.max(0, block.indent - 1)
-                : Math.min(4, block.indent + 1);
-            
-            updateBlock(block.id, { indent: newIndent });
-            renderBlocks();
-            
-            // Focus the same block after re-render
-            setTimeout(() => {
-                const updatedBlock = document.getElementById(block.id);
-                if (updatedBlock) updatedBlock.focus();
-            }, 0);
-        }
-        
-        // Handle / command for block type change
-        if (e.key === '/' && contentElement.textContent === '/') {
-            e.preventDefault();
-            showBlockTypeMenu(block.id, contentElement);
-        }
-        
-        // Handle Backspace at start of empty block to delete it
-        if (e.key === 'Backspace' && contentElement.textContent === '' && !blockElement.querySelector(':focus')) {
-            e.preventDefault();
-            deleteBlock(block.id);
-        }
-        
-        // Handle arrow keys for navigation between blocks
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            navigateToBlock(index - 1);
-        }
-        
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            navigateToBlock(index + 1);
-        }
-    });
-    
-    // Handle paste to clean up content
-    contentElement.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-        
-        // Check if pasted text is a block link
-        if (text.includes('#page=') && text.includes('&block=')) {
-            const url = new URL(text);
-            const pageName = decodeURIComponent(url.hash.split('&')[0].replace('#page=', ''));
-            const blockId = url.hash.split('&block=')[1];
-            
-            // Create a link to the block
-            document.execCommand('insertHTML', false, `<a href="${text}" class="internal-link">${pageName} (block)</a>`);
-        } else {
-            // Regular paste
-            document.execCommand('insertHTML', false, text);
-        }
-    });
-}
-
-// Navigate to block with arrow keys
 function navigateToBlock(index) {
     if (index < 0 || index >= state.blocks.length) return;
     
     const blockId = state.blocks[index].id;
-    const blockElement = document.getElementById(blockId);
-    if (blockElement) {
-        blockElement.focus();
-        
-        // Move cursor to end if it's a contenteditable div
-        if (blockElement.contentEditable === 'true') {
+    const element = document.getElementById(blockId);
+    if (element) {
+        element.focus();
+        if (element.contentEditable === 'true') {
             const range = document.createRange();
-            range.selectNodeContents(blockElement);
+            range.selectNodeContents(element);
             range.collapse(false);
             const selection = window.getSelection();
             selection.removeAllRanges();
@@ -519,275 +506,10 @@ function navigateToBlock(index) {
     }
 }
 
-    
-    // Add search input
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search block types...';
-    searchInput.style.width = 'calc(100% - 24px)';
-    searchInput.style.margin = '6px 12px';
-    searchInput.style.padding = '6px';
-    searchInput.style.border = '1px solid #e0e0e0';
-    searchInput.style.borderRadius = '4px';
-    searchInput.addEventListener('input', (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        const items = menu.querySelectorAll('.block-type-menu-item');
-        
-        items.forEach(item => {
-            const label = item.dataset.label.toLowerCase();
-            if (label.includes(searchTerm)) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-    });
-    
-    menu.appendChild(searchInput);
-    
-    // Add menu items
-    Object.entries(blockTypes).forEach(([type, { label, description }]) => {
-        const menuItem = document.createElement('div');
-        menuItem.className = 'block-type-menu-item';
-        menuItem.style.padding = '8px 12px';
-        menuItem.style.cursor = 'pointer';
-        menuItem.style.display = 'flex';
-        menuItem.style.flexDirection = 'column';
-        menuItem.dataset.label = label;
-        
-        const typeLabel = document.createElement('div');
-        typeLabel.style.fontWeight = '500';
-        typeLabel.style.fontSize = '13px';
-        typeLabel.textContent = label;
-        
-        const typeDesc = document.createElement('div');
-        typeDesc.style.fontSize = '11px';
-        typeDesc.style.color = '#666';
-        typeDesc.style.marginTop = '2px';
-        typeDesc.textContent = description;
-        
-        menuItem.appendChild(typeLabel);
-        menuItem.appendChild(typeDesc);
-        
-        if (block.type === type) {
-            menuItem.style.backgroundColor = '#f1f1f1';
-        }
-        
-        menuItem.addEventListener('click', () => {
-            updateBlock(blockId, { type });
-            renderBlocks();
-            document.body.removeChild(menu);
-            
-            // Focus the block after change
-            setTimeout(() => {
-                const updatedBlock = document.getElementById(blockId);
-                if (updatedBlock) updatedBlock.focus();
-            }, 0);
-        });
-        
-        menuItem.addEventListener('mouseenter', () => {
-            menuItem.style.backgroundColor = '#f7f7f7';
-        });
-        
-        menuItem.addEventListener('mouseleave', () => {
-            menuItem.style.backgroundColor = block.type === type ? '#f1f1f1' : 'white';
-        });
-        
-        menu.appendChild(menuItem);
-    });
-    
-    document.body.appendChild(menu);
-    
-    // Position the menu near the target element
-    const rect = targetElement.getBoundingClientRect();
-    menu.style.left = `${rect.left}px`;
-    menu.style.top = `${rect.bottom + 4}px`;
-    
-    // Focus search input
-    setTimeout(() => {
-        searchInput.focus();
-    }, 0);
-    
-    // Close menu when clicking outside
-    const clickOutsideHandler = (e) => {
-        if (!menu.contains(e.target)) {
-            document.body.removeChild(menu);
-            document.removeEventListener('click', clickOutsideHandler);
-        }
-    };
-    
-    setTimeout(() => {
-        document.addEventListener('click', clickOutsideHandler);
-    }, 0);
-}
-    
-    // Handle content changes
-    contentElement.addEventListener('input', () => {
-        let newContent = contentElement.innerHTML;
-        
-        // For todo items, preserve the ~ prefix if checkbox is checked
-        if (block.type === 'todo') {
-            const checkbox = blockElement.querySelector('.todo-checkbox');
-            if (checkbox.checked && !newContent.startsWith('~')) {
-                newContent = `~${newContent}`;
-            } else if (!checkbox.checked && newContent.startsWith('~')) {
-                newContent = newContent.substring(1);
-            }
-        }
-        
-        updateBlock(block.id, { content: newContent });
-    });
-    
-    // Handle Enter key to create new block
-    contentElement.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            
-            // Get current caret position
-            const selection = window.getSelection();
-            const range = selection.getRangeAt(0);
-            const caretOffset = range.startOffset;
-            const currentContent = contentElement.innerHTML;
-            
-            // Split content at caret position if in the middle of text
-            if (caretOffset > 0 && caretOffset < currentContent.length) {
-                const beforeText = currentContent.substring(0, caretOffset);
-                const afterText = currentContent.substring(caretOffset);
-                
-                // Update current block
-                updateBlock(block.id, { content: beforeText });
-                
-                // Add new block with remaining text
-                addBlock(block.type, afterText, block.indent, index + 1);
-            } else {
-                // Just add a new block
-                addBlock('text', '', block.indent, index + 1);
-            }
-        }
-        
-        // Handle Tab and Shift+Tab for indentation
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            const newIndent = e.shiftKey 
-                ? Math.max(0, block.indent - 1)
-                : Math.min(4, block.indent + 1);
-            
-            updateBlock(block.id, { indent: newIndent });
-            renderBlocks();
-            
-            // Focus the same block after re-render
-            setTimeout(() => {
-                const updatedBlock = document.getElementById(block.id);
-                if (updatedBlock) updatedBlock.focus();
-            }, 0);
-        }
-        
-        // Handle / command for block type change
-        if (e.key === '/' && contentElement.textContent === '/') {
-            e.preventDefault();
-            showBlockTypeMenu(block.id, contentElement);
-        }
-        
-        // Handle Backspace at start of empty block to delete it
-        if (e.key === 'Backspace' && contentElement.textContent === '' && !blockElement.querySelector(':focus')) {
-            e.preventDefault();
-            deleteBlock(block.id);
-        }
-    });
-    
-    // Handle paste to clean up content
-    contentElement.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-        document.execCommand('insertHTML', false, text);
-    });
-}
-
-// Show block type menu
-function showBlockTypeMenu(blockId, targetElement) {
-    const block = state.blocks.find(b => b.id === blockId);
-    if (!block) return;
-    
-    const menu = document.createElement('div');
-    menu.className = 'block-type-menu';
-    menu.style.position = 'absolute';
-    menu.style.backgroundColor = 'white';
-    menu.style.border = '1px solid #e0e0e0';
-    menu.style.borderRadius = '4px';
-    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-    menu.style.zIndex = '1000';
-    menu.style.padding = '4px 0';
-    menu.style.minWidth = '160px';
-    
-    const options = [
-        { type: 'text', label: 'Text' },
-        { type: 'h1', label: 'Heading 1' },
-        { type: 'h2', label: 'Heading 2' },
-        { type: 'todo', label: 'To-do' }
-    ];
-    
-    options.forEach(option => {
-        const menuItem = document.createElement('div');
-        menuItem.className = 'block-type-menu-item';
-        menuItem.style.padding = '6px 12px';
-        menuItem.style.cursor = 'pointer';
-        menuItem.style.fontSize = '13px';
-        menuItem.textContent = option.label;
-        
-        if (block.type === option.type) {
-            menuItem.style.backgroundColor = '#f1f1f1';
-        }
-        
-        menuItem.addEventListener('click', () => {
-            updateBlock(blockId, { type: option.type });
-            renderBlocks();
-            document.body.removeChild(menu);
-            
-            // Focus the block after change
-            setTimeout(() => {
-                const updatedBlock = document.getElementById(blockId);
-                if (updatedBlock) updatedBlock.focus();
-            }, 0);
-        });
-        
-        menuItem.addEventListener('mouseenter', () => {
-            menuItem.style.backgroundColor = '#f7f7f7';
-        });
-        
-        menuItem.addEventListener('mouseleave', () => {
-            menuItem.style.backgroundColor = block.type === option.type ? '#f1f1f1' : 'white';
-        });
-        
-        menu.appendChild(menuItem);
-    });
-    
-    document.body.appendChild(menu);
-    
-    // Position the menu near the target element
-    const rect = targetElement.getBoundingClientRect();
-    menu.style.left = `${rect.left}px`;
-    menu.style.top = `${rect.bottom + 4}px`;
-    
-    // Close menu when clicking outside
-    const clickOutsideHandler = (e) => {
-        if (!menu.contains(e.target)) {
-            document.body.removeChild(menu);
-            document.removeEventListener('click', clickOutsideHandler);
-        }
-    };
-    
-    setTimeout(() => {
-        document.addEventListener('click', clickOutsideHandler);
-    }, 0);
-}
-
-// Set up drag and drop functionality
 function setupDragAndDrop() {
     const blocks = document.querySelectorAll('.block');
     
     blocks.forEach(block => {
-        block.draggable = true;
-        
         block.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', block.id);
             block.classList.add('dragging');
@@ -805,67 +527,43 @@ function setupDragAndDrop() {
         
         const afterElement = getDragAfterElement(elements.blocksContainer, e.clientY);
         
-        // Remove all drag-over classes
-        document.querySelectorAll('.drag-over').forEach(el => {
-            el.classList.remove('drag-over');
-        });
-        
-        if (afterElement) {
-            afterElement.classList.add('drag-over');
-        }
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        if (afterElement) afterElement.classList.add('drag-over');
     });
     
     elements.blocksContainer.addEventListener('drop', (e) => {
         e.preventDefault();
         const id = e.dataTransfer.getData('text/plain');
-        const draggedBlock = document.getElementById(id);
-        if (!draggedBlock) return;
-        
-        const afterElement = getDragAfterElement(elements.blocksContainer, e.clientY);
-        
-        // Remove all drag-over classes
-        document.querySelectorAll('.drag-over').forEach(el => {
-            el.classList.remove('drag-over');
-        });
-        
-        // Find the block in our state
-        const blockIndex = state.blocks.findIndex(b => b.id === id);
+        const blockIndex = state.blocks.findIndex(b => b.id === id.replace('block-', ''));
         if (blockIndex === -1) return;
         
         const block = state.blocks[blockIndex];
-        
-        // Remove from current position
         state.blocks.splice(blockIndex, 1);
         
-        // Insert at new position
+        const afterElement = getDragAfterElement(elements.blocksContainer, e.clientY);
         if (afterElement) {
-            const afterIndex = state.blocks.findIndex(b => b.id === afterElement.id);
+            const afterIndex = state.blocks.findIndex(b => b.id === afterElement.id.replace('block-', ''));
             state.blocks.splice(afterIndex, 0, block);
         } else {
-            // If no afterElement, add to the end
             state.blocks.push(block);
         }
         
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         saveBlocks();
         renderBlocks();
     });
 }
 
-// Helper function to determine where to place dragged element
 function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.block:not(.dragging)')];
+    const elements = [...container.querySelectorAll('.block:not(.dragging)')];
     
-    return draggableElements.reduce((closest, child) => {
+    return elements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
+        return offset < 0 && offset > closest.offset ? 
+            { offset, element: child } : closest;
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// Initialize the app when DOM is loaded
+// Initialize
 document.addEventListener('DOMContentLoaded', init);
