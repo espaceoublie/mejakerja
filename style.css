@@ -255,3 +255,55 @@ a.internal-link {
 a.internal-link:hover {
     background-color: rgba(21, 83, 158, 0.1);
 }
+/* Block link button */
+.copy-block-link-btn {
+    width: 16px;
+    height: 16px;
+    opacity: 0.3;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.copy-block-link-btn:hover {
+    opacity: 0.8;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    z-index: 1000;
+    opacity: 0.9;
+    transition: opacity 0.3s;
+}
+
+.toast.fade-out {
+    opacity: 0;
+}
+
+/* Block type menu */
+.block-type-menu {
+    font-size: 13px;
+}
+
+.block-type-menu input {
+    outline: none;
+}
+
+.block-type-menu input:focus {
+    border-color: var(--link-color) !important;
+}
+
+/* Handle block links in content */
+a.internal-link[href*="&block="] {
+    font-size: 0.9em;
+    color: #666;
+    border-bottom-style: dashed;
+}
