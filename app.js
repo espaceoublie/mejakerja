@@ -1,178 +1,577 @@
-// mejakerja – static Notion-style app
+// State management
+let state = {
+    currentPage: null,
+    pages: [],
+    blocks: []
+};
 
-let currentPage = 'Home';
-let blocks = [];
+// DOM elements
+const elements = {
+    pagesList: document.getElementById('pages-list'),
+    blocksContainer: document.getElementById('blocks-container'),
+    newPageInput: document.getElementById('new-page-input'),
+    addPageBtn: document.getElementById('add-page-btn')
+};
 
-const pageInput = document.getElementById('pageName');
-const switchBtn = document.getElementById('switchPage');
-const blocksContainer = document.getElementById('blocks');
+// Initialize the app
+function init() {
+    loadPages();
+    setupEventListeners();
+    handleRouting();
+}
 
+// Load pages from localStorage
+function loadPages() {
+    const pages = JSON.parse(localStorage.getItem('pages')) || [];
+    state.pages = pages;
+    renderPagesList();
+    
+    // If no pages exist, create a default one
+    if (pages.length === 0) {
+        createPage('Welcome');
+    }
+}
+
+// Save pages to localStorage
+function savePages() {
+    localStorage.setItem('pages', JSON.stringify(state.pages));
+}
+
+// Save blocks for current page to localStorage
 function saveBlocks() {
-  localStorage.setItem(`page-${currentPage}`, JSON.stringify(blocks));
+    if (state.currentPage) {
+        localStorage.setItem(`page-${state.currentPage}`, JSON.stringify(state.blocks));
+    }
 }
 
-function loadBlocks() {
-  const data = localStorage.getItem(`page-${currentPage}`);
-  blocks = data ? JSON.parse(data) : [];
-  renderBlocks();
+// Setup event listeners
+function setupEventListeners() {
+    // Add page button
+    elements.addPageBtn.addEventListener('click', () => {
+        const pageName = elements.newPageInput.value.trim();
+        if (pageName) {
+            createPage(pageName);
+            elements.newPageInput.value = '';
+        }
+    });
+
+    // Add page on Enter key
+    elements.newPageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const pageName = elements.newPageInput.value.trim();
+            if (pageName) {
+                createPage(pageName);
+                elements.newPageInput.value = '';
+            }
+        }
+    });
+
+    // Handle hash changes for routing
+    window.addEventListener('hashchange', handleRouting);
 }
 
-function createBlockElement(block, index) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'block';
-  wrapper.setAttribute('draggable', true);
-  wrapper.dataset.index = index;
-  wrapper.style.marginLeft = `${block.indent * 20}px`;
+// Handle routing based on URL hash
+function handleRouting() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#page=')) {
+        const pageName = decodeURIComponent(hash.substring(6));
+        loadPage(pageName);
+    } else if (state.pages.length > 0) {
+        // Default to first page if no hash
+        loadPage(state.pages[0].name);
+    }
+}
 
-  const deleteBtn = document.createElement('button');
-  deleteBtn.textContent = '×';
-  deleteBtn.className = 'delete-btn';
-  deleteBtn.addEventListener('click', () => {
-    blocks.splice(index, 1);
+// Create a new page
+function createPage(name) {
+    // Check if page already exists
+    if (state.pages.some(page => page.name === name)) {
+        alert('A page with this name already exists');
+        return;
+    }
+
+    const newPage = { name, createdAt: new Date().toISOString() };
+    state.pages.push(newPage);
+    savePages();
+    renderPagesList();
+    loadPage(name);
+    
+    // Update URL
+    window.location.hash = `#page=${encodeURIComponent(name)}`;
+}
+
+// Delete a page
+function deletePage(name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    
+    state.pages = state.pages.filter(page => page.name !== name);
+    savePages();
+    renderPagesList();
+    
+    // If we deleted the current page, load the first available page
+    if (state.currentPage === name) {
+        if (state.pages.length > 0) {
+            loadPage(state.pages[0].name);
+        } else {
+            state.currentPage = null;
+            state.blocks = [];
+            renderBlocks();
+        }
+    }
+    
+    // Remove page data from localStorage
+    localStorage.removeItem(`page-${name}`);
+}
+
+// Load a page
+function loadPage(name) {
+    if (!state.pages.some(page => page.name === name)) return;
+    
+    state.currentPage = name;
+    state.blocks = JSON.parse(localStorage.getItem(`page-${name}`)) || [];
+    
+    // If no blocks exist, create a default one
+    if (state.blocks.length === 0) {
+        state.blocks = [createBlock('text', 'Type / to see commands...')];
+        saveBlocks();
+    }
+    
+    renderPagesList();
+    renderBlocks();
+    
+    // Update URL
+    window.location.hash = `#page=${encodeURIComponent(name)}`;
+}
+
+// Render pages list
+function renderPagesList() {
+    elements.pagesList.innerHTML = '';
+    
+    state.pages.forEach(page => {
+        const pageItem = document.createElement('div');
+        pageItem.className = `page-item ${page.name === state.currentPage ? 'active' : ''}`;
+        pageItem.textContent = page.name;
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-page-btn';
+        deleteBtn.innerHTML = '×';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deletePage(page.name);
+        });
+        
+        pageItem.appendChild(deleteBtn);
+        pageItem.addEventListener('click', () => loadPage(page.name));
+        
+        elements.pagesList.appendChild(pageItem);
+    });
+}
+
+// Create a new block
+function createBlock(type, content = '', indent = 0) {
+    return {
+        id: Date.now().toString(),
+        type,
+        content,
+        indent,
+        createdAt: new Date().toISOString()
+    };
+}
+
+// Add a block
+function addBlock(type, content = '', indent = 0, position = null) {
+    const newBlock = createBlock(type, content, indent);
+    
+    if (position === null) {
+        state.blocks.push(newBlock);
+    } else {
+        state.blocks.splice(position, 0, newBlock);
+    }
+    
     saveBlocks();
     renderBlocks();
-  });
-
-  if (block.type === 'todo') {
-    const todoDiv = document.createElement('div');
-    todoDiv.className = 'todo-block' + (block.checked ? ' done' : '');
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = block.checked;
-    checkbox.addEventListener('change', () => {
-      block.checked = checkbox.checked;
-      saveBlocks();
-      renderBlocks();
-    });
-
-    const label = document.createElement('span');
-    label.contentEditable = true;
-    label.textContent = block.content;
-    label.addEventListener('input', () => {
-      block.content = label.textContent;
-      saveBlocks();
-    });
-
-    label.addEventListener('keydown', e => handleIndent(e, block));
-
-    todoDiv.appendChild(checkbox);
-    todoDiv.appendChild(label);
-    wrapper.appendChild(todoDiv);
-  } else {
-    wrapper.contentEditable = true;
-    wrapper.innerHTML = parseLinks(block.content);
-    wrapper.addEventListener('input', () => {
-      block.content = wrapper.innerText;
-      saveBlocks();
-    });
-    wrapper.addEventListener('keydown', e => handleIndent(e, block));
-  }
-
-  if (block.type.startsWith('heading')) {
-    wrapper.style.fontWeight = 'bold';
-    wrapper.style.fontSize = block.type === 'heading1' ? '1.2rem' : '1rem';
-  }
-
-  wrapper.appendChild(deleteBtn);
-
-  // Drag events
-  wrapper.addEventListener('dragstart', () => {
-    wrapper.classList.add('dragging');
-  });
-  wrapper.addEventListener('dragend', () => {
-    wrapper.classList.remove('dragging');
-    const all = [...blocksContainer.children];
-    const newBlocks = all.map(el => blocks[parseInt(el.dataset.index)]);
-    blocks = newBlocks;
-    saveBlocks();
-    renderBlocks();
-  });
-
-  return wrapper;
+    
+    // Focus the new block
+    setTimeout(() => {
+        const newBlockElement = document.getElementById(newBlock.id);
+        if (newBlockElement) {
+            newBlockElement.focus();
+        }
+    }, 0);
+    
+    return newBlock;
 }
 
+// Update a block
+function updateBlock(id, updates) {
+    const blockIndex = state.blocks.findIndex(block => block.id === id);
+    if (blockIndex !== -1) {
+        state.blocks[blockIndex] = { ...state.blocks[blockIndex], ...updates };
+        saveBlocks();
+    }
+}
+
+// Delete a block
+function deleteBlock(id) {
+    const blockIndex = state.blocks.findIndex(block => block.id === id);
+    if (blockIndex !== -1) {
+        state.blocks.splice(blockIndex, 1);
+        saveBlocks();
+        renderBlocks();
+        
+        // Focus the previous block if exists
+        if (state.blocks.length > 0) {
+            const prevIndex = Math.max(0, blockIndex - 1);
+            const prevBlockId = state.blocks[prevIndex].id;
+            setTimeout(() => {
+                const prevBlockElement = document.getElementById(prevBlockId);
+                if (prevBlockElement) {
+                    prevBlockElement.focus();
+                }
+            }, 0);
+        }
+    }
+}
+
+// Render all blocks
 function renderBlocks() {
-  blocksContainer.innerHTML = '';
-  blocks.forEach((block, index) => {
-    const el = createBlockElement(block, index);
-    blocksContainer.appendChild(el);
-  });
+    elements.blocksContainer.innerHTML = '';
+    
+    state.blocks.forEach((block, index) => {
+        const blockElement = document.createElement('div');
+        blockElement.className = `block ${block.type} ${block.indent ? `indent-${block.indent}` : ''}`;
+        
+        // Create block controls
+        const blockControls = document.createElement('div');
+        blockControls.className = 'block-controls';
+        
+        const typeSelector = document.createElement('span');
+        typeSelector.className = 'block-type-selector';
+        typeSelector.textContent = '⋯';
+        typeSelector.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showBlockTypeMenu(block.id, e.target);
+        });
+        
+        const deleteBtn = document.createElement('span');
+        deleteBtn.className = 'delete-block-btn';
+        deleteBtn.textContent = '×';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteBlock(block.id);
+        });
+        
+        blockControls.appendChild(typeSelector);
+        blockControls.appendChild(deleteBtn);
+        blockElement.appendChild(blockControls);
+        
+        // Create block content based on type
+        if (block.type === 'todo') {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'todo-checkbox';
+            checkbox.checked = block.content.startsWith('~') ? true : false;
+            checkbox.addEventListener('change', () => {
+                const newContent = checkbox.checked ? `~${block.content.replace(/^~/, '')}` : block.content.replace(/^~/, '');
+                updateBlock(block.id, { content: newContent });
+            });
+            
+            const contentElement = document.createElement('div');
+            contentElement.className = 'block-content todo-text';
+            contentElement.id = block.id;
+            contentElement.contentEditable = true;
+            contentElement.dataset.placeholder = 'To-do...';
+            contentElement.innerHTML = processContent(block.content.replace(/^~/, ''));
+            
+            blockElement.appendChild(checkbox);
+            blockElement.appendChild(contentElement);
+        } else {
+            const contentElement = document.createElement('div');
+            contentElement.className = 'block-content';
+            contentElement.id = block.id;
+            contentElement.contentEditable = true;
+            
+            if (block.type === 'text') {
+                contentElement.dataset.placeholder = 'Type / for commands...';
+            } else if (block.type === 'h1') {
+                contentElement.dataset.placeholder = 'Heading 1';
+            } else if (block.type === 'h2') {
+                contentElement.dataset.placeholder = 'Heading 2';
+            }
+            
+            contentElement.innerHTML = processContent(block.content);
+            blockElement.appendChild(contentElement);
+        }
+        
+        // Set up event listeners for the block
+        setupBlockEventListeners(blockElement, block, index);
+        
+        elements.blocksContainer.appendChild(blockElement);
+    });
+    
+    // Make all blocks draggable
+    setupDragAndDrop();
 }
 
-function parseLinks(text) {
-  return text.replace(/\[\[(.+?)\]\]/g, (_, title) => `<a class="internal-link" href="#page=${title}">[[${title}]]</a>`);
+// Process content for internal links
+function processContent(content) {
+    // Convert [[Page Name]] to internal links
+    return content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
+        return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
+    });
 }
 
-function addBlock(type) {
-  const block = {
-    type: type,
-    content: type === 'todo' ? 'To-Do Item' : type.startsWith('heading') ? 'Heading' : 'New block',
-    checked: false,
-    indent: 0
-  };
-  blocks.push(block);
-  saveBlocks();
-  renderBlocks();
+// Set up event listeners for a block
+function setupBlockEventListeners(blockElement, block, index) {
+    const contentElement = block.type === 'todo' 
+        ? blockElement.querySelector('.todo-text') 
+        : blockElement.querySelector('.block-content');
+    
+    // Handle content changes
+    contentElement.addEventListener('input', () => {
+        let newContent = contentElement.innerHTML;
+        
+        // For todo items, preserve the ~ prefix if checkbox is checked
+        if (block.type === 'todo') {
+            const checkbox = blockElement.querySelector('.todo-checkbox');
+            if (checkbox.checked && !newContent.startsWith('~')) {
+                newContent = `~${newContent}`;
+            } else if (!checkbox.checked && newContent.startsWith('~')) {
+                newContent = newContent.substring(1);
+            }
+        }
+        
+        updateBlock(block.id, { content: newContent });
+    });
+    
+    // Handle Enter key to create new block
+    contentElement.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            
+            // Get current caret position
+            const selection = window.getSelection();
+            const range = selection.getRangeAt(0);
+            const caretOffset = range.startOffset;
+            const currentContent = contentElement.innerHTML;
+            
+            // Split content at caret position if in the middle of text
+            if (caretOffset > 0 && caretOffset < currentContent.length) {
+                const beforeText = currentContent.substring(0, caretOffset);
+                const afterText = currentContent.substring(caretOffset);
+                
+                // Update current block
+                updateBlock(block.id, { content: beforeText });
+                
+                // Add new block with remaining text
+                addBlock(block.type, afterText, block.indent, index + 1);
+            } else {
+                // Just add a new block
+                addBlock('text', '', block.indent, index + 1);
+            }
+        }
+        
+        // Handle Tab and Shift+Tab for indentation
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const newIndent = e.shiftKey 
+                ? Math.max(0, block.indent - 1)
+                : Math.min(4, block.indent + 1);
+            
+            updateBlock(block.id, { indent: newIndent });
+            renderBlocks();
+            
+            // Focus the same block after re-render
+            setTimeout(() => {
+                const updatedBlock = document.getElementById(block.id);
+                if (updatedBlock) updatedBlock.focus();
+            }, 0);
+        }
+        
+        // Handle / command for block type change
+        if (e.key === '/' && contentElement.textContent === '/') {
+            e.preventDefault();
+            showBlockTypeMenu(block.id, contentElement);
+        }
+        
+        // Handle Backspace at start of empty block to delete it
+        if (e.key === 'Backspace' && contentElement.textContent === '' && !blockElement.querySelector(':focus')) {
+            e.preventDefault();
+            deleteBlock(block.id);
+        }
+    });
+    
+    // Handle paste to clean up content
+    contentElement.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertHTML', false, text);
+    });
 }
 
-function handleIndent(e, block) {
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      block.indent = Math.max(0, block.indent - 1);
-    } else {
-      block.indent += 1;
-    }
-    saveBlocks();
-    renderBlocks();
-  }
+// Show block type menu
+function showBlockTypeMenu(blockId, targetElement) {
+    const block = state.blocks.find(b => b.id === blockId);
+    if (!block) return;
+    
+    const menu = document.createElement('div');
+    menu.className = 'block-type-menu';
+    menu.style.position = 'absolute';
+    menu.style.backgroundColor = 'white';
+    menu.style.border = '1px solid #e0e0e0';
+    menu.style.borderRadius = '4px';
+    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+    menu.style.zIndex = '1000';
+    menu.style.padding = '4px 0';
+    menu.style.minWidth = '160px';
+    
+    const options = [
+        { type: 'text', label: 'Text' },
+        { type: 'h1', label: 'Heading 1' },
+        { type: 'h2', label: 'Heading 2' },
+        { type: 'todo', label: 'To-do' }
+    ];
+    
+    options.forEach(option => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'block-type-menu-item';
+        menuItem.style.padding = '6px 12px';
+        menuItem.style.cursor = 'pointer';
+        menuItem.style.fontSize = '13px';
+        menuItem.textContent = option.label;
+        
+        if (block.type === option.type) {
+            menuItem.style.backgroundColor = '#f1f1f1';
+        }
+        
+        menuItem.addEventListener('click', () => {
+            updateBlock(blockId, { type: option.type });
+            renderBlocks();
+            document.body.removeChild(menu);
+            
+            // Focus the block after change
+            setTimeout(() => {
+                const updatedBlock = document.getElementById(blockId);
+                if (updatedBlock) updatedBlock.focus();
+            }, 0);
+        });
+        
+        menuItem.addEventListener('mouseenter', () => {
+            menuItem.style.backgroundColor = '#f7f7f7';
+        });
+        
+        menuItem.addEventListener('mouseleave', () => {
+            menuItem.style.backgroundColor = block.type === option.type ? '#f1f1f1' : 'white';
+        });
+        
+        menu.appendChild(menuItem);
+    });
+    
+    document.body.appendChild(menu);
+    
+    // Position the menu near the target element
+    const rect = targetElement.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    
+    // Close menu when clicking outside
+    const clickOutsideHandler = (e) => {
+        if (!menu.contains(e.target)) {
+            document.body.removeChild(menu);
+            document.removeEventListener('click', clickOutsideHandler);
+        }
+    };
+    
+    setTimeout(() => {
+        document.addEventListener('click', clickOutsideHandler);
+    }, 0);
 }
 
-switchBtn.addEventListener('click', () => {
-  const name = pageInput.value.trim();
-  if (name) {
-    window.location.hash = `#page=${name}`;
-  }
-});
+// Set up drag and drop functionality
+function setupDragAndDrop() {
+    const blocks = document.querySelectorAll('.block');
+    
+    blocks.forEach(block => {
+        block.draggable = true;
+        
+        block.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', block.id);
+            block.classList.add('dragging');
+        });
+        
+        block.addEventListener('dragend', () => {
+            block.classList.remove('dragging');
+        });
+    });
+    
+    elements.blocksContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const draggingBlock = document.querySelector('.dragging');
+        if (!draggingBlock) return;
+        
+        const afterElement = getDragAfterElement(elements.blocksContainer, e.clientY);
+        
+        // Remove all drag-over classes
+        document.querySelectorAll('.drag-over').forEach(el => {
+            el.classList.remove('drag-over');
+        });
+        
+        if (afterElement) {
+            afterElement.classList.add('drag-over');
+        }
+    });
+    
+    elements.blocksContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData('text/plain');
+        const draggedBlock = document.getElementById(id);
+        if (!draggedBlock) return;
+        
+        const afterElement = getDragAfterElement(elements.blocksContainer, e.clientY);
+        
+        // Remove all drag-over classes
+        document.querySelectorAll('.drag-over').forEach(el => {
+            el.classList.remove('drag-over');
+        });
+        
+        // Find the block in our state
+        const blockIndex = state.blocks.findIndex(b => b.id === id);
+        if (blockIndex === -1) return;
+        
+        const block = state.blocks[blockIndex];
+        
+        // Remove from current position
+        state.blocks.splice(blockIndex, 1);
+        
+        // Insert at new position
+        if (afterElement) {
+            const afterIndex = state.blocks.findIndex(b => b.id === afterElement.id);
+            state.blocks.splice(afterIndex, 0, block);
+        } else {
+            // If no afterElement, add to the end
+            state.blocks.push(block);
+        }
+        
+        saveBlocks();
+        renderBlocks();
+    });
+}
 
-window.addEventListener('hashchange', () => {
-  const hash = window.location.hash.match(/#page=(.+)/);
-  currentPage = hash ? hash[1] : 'Home';
-  pageInput.value = currentPage;
-  loadBlocks();
-});
-
-// Init
-pageInput.value = currentPage;
-loadBlocks();
-
-// Drag and drop support
-blocksContainer.addEventListener('dragover', e => {
-  e.preventDefault();
-  const afterElement = getDragAfterElement(blocksContainer, e.clientY);
-  const dragging = document.querySelector('.dragging');
-  if (afterElement == null) {
-    blocksContainer.appendChild(dragging);
-  } else {
-    blocksContainer.insertBefore(dragging, afterElement);
-  }
-});
-
+// Helper function to determine where to place dragged element
 function getDragAfterElement(container, y) {
-  const elements = [...container.querySelectorAll('.block:not(.dragging)')];
-  return elements.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) {
-      return { offset: offset, element: child };
-    } else {
-      return closest;
-    }
-  }, { offset: Number.NEGATIVE_INFINITY }).element;
+    const draggableElements = [...container.querySelectorAll('.block:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// Block creation buttons
-addText.onclick = () => addBlock('text');
-addHeading.onclick = () => addBlock('heading2');
-addTodo.onclick = () => addBlock('todo');
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', init);
