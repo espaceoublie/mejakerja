@@ -353,14 +353,6 @@ function copyBlockLink(blockId) {
     });
 }
 
-// Process content for internal links
-function processContent(content) {
-    // Convert [[Page Name]] to internal links
-    return content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
-        return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
-    });
-}
-
 // Show toast notification
 function showToast(message) {
     const toast = document.createElement('div');
@@ -527,21 +519,6 @@ function navigateToBlock(index) {
     }
 }
 
-// Show block type menu with descriptions
-function showBlockTypeMenu(blockId, targetElement) {
-    const block = state.blocks.find(b => b.id === blockId);
-    if (!block) return;
-    
-    const menu = document.createElement('div');
-    menu.className = 'block-type-menu';
-    menu.style.position = 'absolute';
-    menu.style.backgroundColor = 'white';
-    menu.style.border = '1px solid #e0e0e0';
-    menu.style.borderRadius = '4px';
-    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-    menu.style.zIndex = '1000';
-    menu.style.padding = '4px 0';
-    menu.style.minWidth = '220px';
     
     // Add search input
     const searchInput = document.createElement('input');
@@ -643,12 +620,6 @@ function showBlockTypeMenu(blockId, targetElement) {
         document.addEventListener('click', clickOutsideHandler);
     }, 0);
 }
-
-// Set up event listeners for a block
-function setupBlockEventListeners(blockElement, block, index) {
-    const contentElement = block.type === 'todo' 
-        ? blockElement.querySelector('.todo-text') 
-        : blockElement.querySelector('.block-content');
     
     // Handle content changes
     contentElement.addEventListener('input', () => {
