@@ -680,12 +680,13 @@ function handlePaste(e) {
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     
     if (text.includes('#page=') && text.includes('&block=')) {
-        const url = new URL(text);
+        const url = new URL(text.startsWith('http') ? text : `http://dummy${text}`);
         const pageName = decodeURIComponent(url.hash.split('&')[0].replace('#page=', ''));
+        const blockId = url.hash.split('&block=')[1];
         document.execCommand('insertHTML', false, 
-            `<a href="${text}" class="internal-link">${pageName} (block)</a>`);
+            `<a href="#page=${encodeURIComponent(pageName)}&block=${blockId}" class="internal-link">${pageName} (block)</a>`);
     } else {
-        document.execCommand('insertHTML', false, text);
+        document.execCommand('insertText', false, text);
     }
 }
 
@@ -775,7 +776,7 @@ function showBlockTypeMenu(blockId, targetElement) {
 
     // Position menu
     const rect = targetElement.getBoundingClientRect();
-    menu.style.left = `${rect.left}px`;
+    menu.style.left = `${Math.min(rect.left, window.innerWidth - 250)}px`;
     menu.style.top = `${rect.bottom + 4}px`;
 
     // Focus search and handle outside clicks
@@ -809,20 +810,22 @@ function copyBlockLink(blockId) {
     navigator.clipboard.writeText(url).then(() => {
         state.copiedBlockLink = { page: state.currentPage, blockId };
         showToast('Block link copied');
+    }).catch(err => {
+        console.error('Failed to copy:', err);
     });
 }
 
+// Updated processContent function
 function processContent(content) {
+    // Handle page links
     let processed = content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
         return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
     });
     
-    if (state.copiedBlockLink) {
-        const regex = new RegExp(`(${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.copiedBlockLink.page)}&block=${state.copiedBlockLink.blockId})`, 'g');
-        processed = processed.replace(regex, (match) => {
-            return `<a href="${match}" class="internal-link">${state.copiedBlockLink.page} (block)</a>`;
-        });
-    }
+    // Handle block links
+    processed = processed.replace(/#page=([^&]+)&block=([^'"\s]+)/g, (match, pageName, blockId) => {
+        return `<a href="#page=${encodeURIComponent(pageName)}&block=${blockId}" class="internal-link">${pageName} (block)</a>`;
+    });
     
     return processed;
 }
@@ -893,14 +896,17 @@ function setupDragAndDrop() {
     });
 }
 
+// Updated getDragAfterElement function
 function getDragAfterElement(container, y) {
     const elements = [...container.querySelectorAll('.block:not(.dragging)')];
     
     return elements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = y - box.top - box.height / 2;
-        return offset < 0 && offset > closest.offset ? 
-            { offset, element: child } : closest;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+        return closest;
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
