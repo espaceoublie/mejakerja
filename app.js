@@ -2,7 +2,9 @@
 let state = {
     currentPage: null,
     pages: [],
-    blocks: []
+    blocks: [],
+    copiedBlockLink: null,
+    lastBlockType: 'text' // Track the last block type used
 };
 
 // DOM elements
@@ -11,6 +13,14 @@ const elements = {
     blocksContainer: document.getElementById('blocks-container'),
     newPageInput: document.getElementById('new-page-input'),
     addPageBtn: document.getElementById('add-page-btn')
+};
+
+// Block types with icons and descriptions
+const blockTypes = {
+    text: { label: 'Text', description: 'Just start writing with plain text.' },
+    h1: { label: 'Heading 1', description: 'Big section heading.' },
+    h2: { label: 'Heading 2', description: 'Medium section heading.' },
+    todo: { label: 'To-do', description: 'Track tasks with a checkbox.' }
 };
 
 // Initialize the app
@@ -169,6 +179,11 @@ function renderPagesList() {
 
 // Create a new block
 function createBlock(type, content = '', indent = 0) {
+    // Update last block type
+    if (type !== state.lastBlockType) {
+        state.lastBlockType = type;
+    }
+    
     return {
         id: Date.now().toString(),
         type,
@@ -240,6 +255,7 @@ function renderBlocks() {
     state.blocks.forEach((block, index) => {
         const blockElement = document.createElement('div');
         blockElement.className = `block ${block.type} ${block.indent ? `indent-${block.indent}` : ''}`;
+        blockElement.id = `block-${block.id}`; // Add ID for block element
         
         // Create block controls
         const blockControls = document.createElement('div');
@@ -253,6 +269,15 @@ function renderBlocks() {
             showBlockTypeMenu(block.id, e.target);
         });
         
+        const copyLinkBtn = document.createElement('span');
+        copyLinkBtn.className = 'copy-block-link-btn';
+        copyLinkBtn.textContent = '🔗';
+        copyLinkBtn.title = 'Copy block link';
+        copyLinkBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyBlockLink(block.id);
+        });
+        
         const deleteBtn = document.createElement('span');
         deleteBtn.className = 'delete-block-btn';
         deleteBtn.textContent = '×';
@@ -262,6 +287,7 @@ function renderBlocks() {
         });
         
         blockControls.appendChild(typeSelector);
+        blockControls.appendChild(copyLinkBtn);
         blockControls.appendChild(deleteBtn);
         blockElement.appendChild(blockControls);
         
@@ -313,12 +339,309 @@ function renderBlocks() {
     setupDragAndDrop();
 }
 
+// Copy block link to clipboard
+function copyBlockLink(blockId) {
+    if (!state.currentPage) return;
+    
+    const block = state.blocks.find(b => b.id === blockId);
+    if (!block) return;
+    
+    const url = `${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.currentPage)}&block=${blockId}`;
+    navigator.clipboard.writeText(url).then(() => {
+        state.copiedBlockLink = { page: state.currentPage, blockId };
+        showToast('Block link copied to clipboard');
+    });
+}
+
 // Process content for internal links
 function processContent(content) {
     // Convert [[Page Name]] to internal links
     return content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
         return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
     });
+}
+
+// Show toast notification
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 2000);
+}
+
+// Process content for internal links and block links
+function processContent(content) {
+    // Convert [[Page Name]] to internal links
+    let processed = content.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
+        return `<a href="#page=${encodeURIComponent(pageName)}" class="internal-link">${pageName}</a>`;
+    });
+    
+    // Convert block links (if any were pasted)
+    if (state.copiedBlockLink) {
+        const blockLinkRegex = new RegExp(`(${window.location.origin}${window.location.pathname}#page=${encodeURIComponent(state.copiedBlockLink.page)}&block=${state.copiedBlockLink.blockId})`, 'g');
+        processed = processed.replace(blockLinkRegex, (match) => {
+            return `<a href="${match}" class="internal-link">${state.copiedBlockLink.page} (block)</a>`;
+        });
+    }
+    
+    return processed;
+}
+
+// Set up event listeners for a block
+function setupBlockEventListeners(blockElement, block, index) {
+    const contentElement = block.type === 'todo' 
+        ? blockElement.querySelector('.todo-text') 
+        : blockElement.querySelector('.block-content');
+    
+    // Handle content changes
+    contentElement.addEventListener('input', () => {
+        let newContent = contentElement.innerHTML;
+        
+        // For todo items, preserve the ~ prefix if checkbox is checked
+        if (block.type === 'todo') {
+            const checkbox = blockElement.querySelector('.todo-checkbox');
+            if (checkbox.checked && !newContent.startsWith('~')) {
+                newContent = `~${newContent}`;
+            } else if (!checkbox.checked && newContent.startsWith('~')) {
+                newContent = newContent.substring(1);
+            }
+        }
+        
+        updateBlock(block.id, { content: newContent });
+    });
+    
+    // Handle Enter key to create new block
+    contentElement.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            
+            // Get current caret position
+            const selection = window.getSelection();
+            const range = selection.getRangeAt(0);
+            const caretOffset = range.startOffset;
+            const currentContent = contentElement.innerHTML;
+            
+            // Split content at caret position if in the middle of text
+            if (caretOffset > 0 && caretOffset < currentContent.length) {
+                const beforeText = currentContent.substring(0, caretOffset);
+                const afterText = currentContent.substring(caretOffset);
+                
+                // Update current block
+                updateBlock(block.id, { content: beforeText });
+                
+                // Add new block with remaining text
+                addBlock(block.type, afterText, block.indent, index + 1);
+            } else {
+                // If current block is todo, next block should be todo too
+                const nextBlockType = block.type === 'todo' ? 'todo' : state.lastBlockType;
+                addBlock(nextBlockType, '', block.indent, index + 1);
+            }
+        }
+        
+        // Handle Tab and Shift+Tab for indentation
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const newIndent = e.shiftKey 
+                ? Math.max(0, block.indent - 1)
+                : Math.min(4, block.indent + 1);
+            
+            updateBlock(block.id, { indent: newIndent });
+            renderBlocks();
+            
+            // Focus the same block after re-render
+            setTimeout(() => {
+                const updatedBlock = document.getElementById(block.id);
+                if (updatedBlock) updatedBlock.focus();
+            }, 0);
+        }
+        
+        // Handle / command for block type change
+        if (e.key === '/' && contentElement.textContent === '/') {
+            e.preventDefault();
+            showBlockTypeMenu(block.id, contentElement);
+        }
+        
+        // Handle Backspace at start of empty block to delete it
+        if (e.key === 'Backspace' && contentElement.textContent === '' && !blockElement.querySelector(':focus')) {
+            e.preventDefault();
+            deleteBlock(block.id);
+        }
+        
+        // Handle arrow keys for navigation between blocks
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateToBlock(index - 1);
+        }
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            navigateToBlock(index + 1);
+        }
+    });
+    
+    // Handle paste to clean up content
+    contentElement.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+        
+        // Check if pasted text is a block link
+        if (text.includes('#page=') && text.includes('&block=')) {
+            const url = new URL(text);
+            const pageName = decodeURIComponent(url.hash.split('&')[0].replace('#page=', ''));
+            const blockId = url.hash.split('&block=')[1];
+            
+            // Create a link to the block
+            document.execCommand('insertHTML', false, `<a href="${text}" class="internal-link">${pageName} (block)</a>`);
+        } else {
+            // Regular paste
+            document.execCommand('insertHTML', false, text);
+        }
+    });
+}
+
+// Navigate to block with arrow keys
+function navigateToBlock(index) {
+    if (index < 0 || index >= state.blocks.length) return;
+    
+    const blockId = state.blocks[index].id;
+    const blockElement = document.getElementById(blockId);
+    if (blockElement) {
+        blockElement.focus();
+        
+        // Move cursor to end if it's a contenteditable div
+        if (blockElement.contentEditable === 'true') {
+            const range = document.createRange();
+            range.selectNodeContents(blockElement);
+            range.collapse(false);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    }
+}
+
+// Show block type menu with descriptions
+function showBlockTypeMenu(blockId, targetElement) {
+    const block = state.blocks.find(b => b.id === blockId);
+    if (!block) return;
+    
+    const menu = document.createElement('div');
+    menu.className = 'block-type-menu';
+    menu.style.position = 'absolute';
+    menu.style.backgroundColor = 'white';
+    menu.style.border = '1px solid #e0e0e0';
+    menu.style.borderRadius = '4px';
+    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+    menu.style.zIndex = '1000';
+    menu.style.padding = '4px 0';
+    menu.style.minWidth = '220px';
+    
+    // Add search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search block types...';
+    searchInput.style.width = 'calc(100% - 24px)';
+    searchInput.style.margin = '6px 12px';
+    searchInput.style.padding = '6px';
+    searchInput.style.border = '1px solid #e0e0e0';
+    searchInput.style.borderRadius = '4px';
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const items = menu.querySelectorAll('.block-type-menu-item');
+        
+        items.forEach(item => {
+            const label = item.dataset.label.toLowerCase();
+            if (label.includes(searchTerm)) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+    
+    menu.appendChild(searchInput);
+    
+    // Add menu items
+    Object.entries(blockTypes).forEach(([type, { label, description }]) => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'block-type-menu-item';
+        menuItem.style.padding = '8px 12px';
+        menuItem.style.cursor = 'pointer';
+        menuItem.style.display = 'flex';
+        menuItem.style.flexDirection = 'column';
+        menuItem.dataset.label = label;
+        
+        const typeLabel = document.createElement('div');
+        typeLabel.style.fontWeight = '500';
+        typeLabel.style.fontSize = '13px';
+        typeLabel.textContent = label;
+        
+        const typeDesc = document.createElement('div');
+        typeDesc.style.fontSize = '11px';
+        typeDesc.style.color = '#666';
+        typeDesc.style.marginTop = '2px';
+        typeDesc.textContent = description;
+        
+        menuItem.appendChild(typeLabel);
+        menuItem.appendChild(typeDesc);
+        
+        if (block.type === type) {
+            menuItem.style.backgroundColor = '#f1f1f1';
+        }
+        
+        menuItem.addEventListener('click', () => {
+            updateBlock(blockId, { type });
+            renderBlocks();
+            document.body.removeChild(menu);
+            
+            // Focus the block after change
+            setTimeout(() => {
+                const updatedBlock = document.getElementById(blockId);
+                if (updatedBlock) updatedBlock.focus();
+            }, 0);
+        });
+        
+        menuItem.addEventListener('mouseenter', () => {
+            menuItem.style.backgroundColor = '#f7f7f7';
+        });
+        
+        menuItem.addEventListener('mouseleave', () => {
+            menuItem.style.backgroundColor = block.type === type ? '#f1f1f1' : 'white';
+        });
+        
+        menu.appendChild(menuItem);
+    });
+    
+    document.body.appendChild(menu);
+    
+    // Position the menu near the target element
+    const rect = targetElement.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    
+    // Focus search input
+    setTimeout(() => {
+        searchInput.focus();
+    }, 0);
+    
+    // Close menu when clicking outside
+    const clickOutsideHandler = (e) => {
+        if (!menu.contains(e.target)) {
+            document.body.removeChild(menu);
+            document.removeEventListener('click', clickOutsideHandler);
+        }
+    };
+    
+    setTimeout(() => {
+        document.addEventListener('click', clickOutsideHandler);
+    }, 0);
 }
 
 // Set up event listeners for a block
