@@ -8,9 +8,21 @@
 </head>
 <body>
   <div class="container">
-    <h1>📝 mejakerja</h1>
-    <button id="addBlock">+ Add Block</button>
-    <div id="blocks"></div>
+    <header>
+      <h1>📝 mejakerja</h1>
+      <div class="page-nav">
+        <input type="text" id="pageName" placeholder="Page: Home" />
+        <button id="switchPage">Load Page</button>
+      </div>
+    </header>
+
+    <div class="controls">
+      <button id="addText">+ Text</button>
+      <button id="addHeading">+ Heading</button>
+      <button id="addTodo">+ To-Do</button>
+    </div>
+
+    <div id="blocks" class="blocks" draggable="true"></div>
   </div>
 
   <script src="app.js"></script>
