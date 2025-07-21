@@ -22,6 +22,16 @@ function createBlockElement(block, index) {
   wrapper.className = 'block';
   wrapper.setAttribute('draggable', true);
   wrapper.dataset.index = index;
+  wrapper.style.marginLeft = `${block.indent * 20}px`;
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.textContent = '×';
+  deleteBtn.className = 'delete-btn';
+  deleteBtn.addEventListener('click', () => {
+    blocks.splice(index, 1);
+    saveBlocks();
+    renderBlocks();
+  });
 
   if (block.type === 'todo') {
     const todoDiv = document.createElement('div');
@@ -33,7 +43,7 @@ function createBlockElement(block, index) {
     checkbox.addEventListener('change', () => {
       block.checked = checkbox.checked;
       saveBlocks();
-      loadBlocks();
+      renderBlocks();
     });
 
     const label = document.createElement('span');
@@ -43,6 +53,8 @@ function createBlockElement(block, index) {
       block.content = label.textContent;
       saveBlocks();
     });
+
+    label.addEventListener('keydown', e => handleIndent(e, block));
 
     todoDiv.appendChild(checkbox);
     todoDiv.appendChild(label);
@@ -54,12 +66,15 @@ function createBlockElement(block, index) {
       block.content = wrapper.innerText;
       saveBlocks();
     });
+    wrapper.addEventListener('keydown', e => handleIndent(e, block));
   }
 
   if (block.type.startsWith('heading')) {
     wrapper.style.fontWeight = 'bold';
     wrapper.style.fontSize = block.type === 'heading1' ? '1.2rem' : '1rem';
   }
+
+  wrapper.appendChild(deleteBtn);
 
   // Drag events
   wrapper.addEventListener('dragstart', () => {
@@ -71,6 +86,7 @@ function createBlockElement(block, index) {
     const newBlocks = all.map(el => blocks[parseInt(el.dataset.index)]);
     blocks = newBlocks;
     saveBlocks();
+    renderBlocks();
   });
 
   return wrapper;
@@ -92,11 +108,25 @@ function addBlock(type) {
   const block = {
     type: type,
     content: type === 'todo' ? 'To-Do Item' : type.startsWith('heading') ? 'Heading' : 'New block',
-    checked: false
+    checked: false,
+    indent: 0
   };
   blocks.push(block);
   saveBlocks();
   renderBlocks();
+}
+
+function handleIndent(e, block) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      block.indent = Math.max(0, block.indent - 1);
+    } else {
+      block.indent += 1;
+    }
+    saveBlocks();
+    renderBlocks();
+  }
 }
 
 switchBtn.addEventListener('click', () => {
